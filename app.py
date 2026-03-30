@@ -5,6 +5,7 @@ from pathlib import Path
 import streamlit as st
 
 from extractor import extract_report_asset
+from pdf_export import build_ddr_pdf
 from report_generator import build_ddr_report
 
 
@@ -77,7 +78,7 @@ def render_section(title: str, body: str) -> None:
     st.markdown(body.replace("\n", "  \n"))
 
 
-sample_mode = st.checkbox("Use bundled sample PDFs from the project folder", value=True)
+sample_mode = st.checkbox("Use bundled sample PDFs from the project folder", value=False)
 
 inspection_name = inspection_file.name if inspection_file else None
 inspection_bytes = inspection_file.read() if inspection_file else None
@@ -93,6 +94,8 @@ if sample_mode:
 reference_name, reference_bytes = load_workspace_pdf(REFERENCE_DDR)
 
 if inspection_bytes and thermal_bytes:
+    source_label = "bundled sample PDFs" if sample_mode and not inspection_file and not thermal_file else "uploaded PDFs"
+    st.caption(f"Using {source_label} for this run.")
     if st.button("Generate DDR Report", type="primary"):
         with st.spinner("Extracting report data and generating DDR..."):
             inspection_asset = extract_report_asset(inspection_name or "Inspection Report.pdf", inspection_bytes)
@@ -104,6 +107,7 @@ if inspection_bytes and thermal_bytes:
             )
             ddr = build_ddr_report(inspection_asset, thermal_asset, reference_asset)
             markdown_output = as_markdown_report(ddr)
+            pdf_output = build_ddr_pdf(ddr, inspection_asset, thermal_asset)
 
         st.success("DDR report generated.")
 
@@ -149,5 +153,11 @@ if inspection_bytes and thermal_bytes:
             file_name="generated_ddr.md",
             mime="text/markdown",
         )
+        st.download_button(
+            "Download DDR as PDF",
+            data=pdf_output,
+            file_name="generated_ddr.pdf",
+            mime="application/pdf",
+        )
 else:
-    st.info("Add both PDFs to begin, or keep sample mode enabled to use the bundled assignment files.")
+    st.info("Upload both PDFs to begin. If you want a demo run, enable sample mode to use the bundled assignment files.")

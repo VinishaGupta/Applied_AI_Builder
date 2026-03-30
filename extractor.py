@@ -12,6 +12,7 @@ def extract_report_asset(file_name: str, file_bytes: bytes) -> ReportAsset:
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     page_text: List[str] = []
     images: List[ExtractedImage] = []
+    max_embedded_images_per_page = 4
 
     for page_index in range(len(doc)):
         page = doc.load_page(page_index)
@@ -20,8 +21,21 @@ def extract_report_asset(file_name: str, file_bytes: bytes) -> ReportAsset:
             header = f"\n\n--- Page {page_index + 1} ---\n"
             page_text.append(header + text)
 
+        # Use a page snapshot as the main visual reference so the generated
+        # DDR shows meaningful visuals instead of tiny PDF fragments/icons.
+        page_snapshot = page.get_pixmap(matrix=fitz.Matrix(1.2, 1.2), alpha=False)
+        images.append(
+            ExtractedImage(
+                page_number=page_index + 1,
+                image_index=0,
+                extension="png",
+                bytes_data=page_snapshot.tobytes("png"),
+                caption=f"{file_name} page {page_index + 1} snapshot",
+            )
+        )
+
         page_images = page.get_images(full=True)
-        for image_index, image_meta in enumerate(page_images, start=1):
+        for image_index, image_meta in enumerate(page_images[:max_embedded_images_per_page], start=1):
             xref = image_meta[0]
             base_image = doc.extract_image(xref)
             images.append(
