@@ -306,18 +306,18 @@ def _draw_page_frame(canvas, doc, metadata: dict[str, str]) -> None:
     canvas.setStrokeColor(colors.HexColor("#D5DCE3"))
     canvas.line(40, 36, A4[0] - 40, 36)
     canvas.setFillColor(colors.blue)
-    canvas.setFont("Helvetica-Oblique", 12)
+    canvas.setFont("Helvetica-Oblique", 11)
     canvas.drawString(40, footer_y, "www.urbaroof.in")
 
     canvas.setFillColor(colors.HexColor("#666666"))
-    canvas.setFont("Times-BoldItalic", 17)
-    canvas.drawCentredString(A4[0] / 2, footer_y, "UrbanRoof Private Limited")
+    canvas.setFont("Times-BoldItalic", 12)
+    canvas.drawCentredString((A4[0] / 2) - 18, footer_y, "UrbanRoof Private Limited")
 
     canvas.setFillColor(colors.HexColor("#4B4B4B"))
-    canvas.setFont("Helvetica", 13)
-    canvas.drawRightString(A4[0] - 78, footer_y, "Page")
-    canvas.setFont("Helvetica", 24)
-    canvas.drawRightString(A4[0] - 40, footer_y, str(doc.page))
+    canvas.setFont("Helvetica", 11)
+    canvas.drawRightString(A4[0] - 86, footer_y, "Page")
+    canvas.setFont("Helvetica", 20)
+    canvas.drawRightString(A4[0] - 40, footer_y - 2, str(doc.page))
     canvas.restoreState()
 
 
