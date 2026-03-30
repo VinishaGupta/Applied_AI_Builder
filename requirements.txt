@@ -1,0 +1,4 @@
+streamlit>=1.44.0
+PyMuPDF>=1.25.5
+pydantic>=2.10.6
+openai>=1.72.0
