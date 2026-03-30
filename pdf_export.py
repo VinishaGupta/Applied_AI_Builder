@@ -70,6 +70,10 @@ def build_ddr_pdf(ddr: DDRReport, inspection: ReportAsset, thermal: ReportAsset)
     story = []
     story.extend(_cover_page(metadata, title_style, body_style))
     story.append(PageBreak())
+    story.extend(_toc_page(ddr, section_style, body_style))
+    story.append(PageBreak())
+    story.extend(_images_index_page(ddr, section_style, body_style))
+    story.append(PageBreak())
 
     story.extend(
         _section_block(
@@ -261,6 +265,45 @@ def _cover_page(metadata: dict[str, str], title_style: ParagraphStyle, body_styl
     return cover_blocks
 
 
+def _toc_page(ddr: DDRReport, section_style: ParagraphStyle, body_style: ParagraphStyle) -> list:
+    items = [
+        ("SECTION 1 INTRODUCTION", "4"),
+        ("SECTION 2 GENERAL INFORMATION", "4"),
+        ("SECTION 3 VISUAL OBSERVATIONS AND READINGS", "5"),
+        ("SECTION 4 ANALYSIS AND SUGGESTIONS", "6"),
+        ("SECTION 5 ADDITIONAL NOTES", "6"),
+        ("SECTION 6 MISSING / UNCLEAR INFORMATION", "7"),
+        ("IMAGES", "3"),
+    ]
+    blocks = [
+        Paragraph("Table of Content", section_style),
+        Spacer(1, 0.12 * inch),
+    ]
+    for title, page_no in items:
+        blocks.append(Paragraph(_toc_line(title, page_no), body_style))
+        if "VISUAL OBSERVATIONS" in title:
+            for index, section in enumerate(ddr.area_wise_observations, start=1):
+                blocks.append(Paragraph(_toc_line(f"3.{index} {section.title}", "5"), _small_toc_style()))
+    return blocks
+
+
+def _images_index_page(ddr: DDRReport, section_style: ParagraphStyle, body_style: ParagraphStyle) -> list:
+    blocks = [
+        Paragraph("Images", section_style),
+        Spacer(1, 0.12 * inch),
+    ]
+    image_counter = 1
+    for section in ddr.area_wise_observations:
+        if not section.images:
+            continue
+        caption = _image_index_caption(section.title, section.body)
+        blocks.append(Paragraph(_toc_line(f"IMAGE {image_counter}: {caption}", "5"), body_style))
+        image_counter += 1
+    if image_counter == 1:
+        blocks.append(Paragraph("Image index not available.", body_style))
+    return blocks
+
+
 def _general_information_table(metadata: dict[str, str]) -> Table:
     table = Table(
         [
@@ -285,6 +328,18 @@ def _general_information_table(metadata: dict[str, str]) -> Table:
         )
     )
     return table
+
+
+def _small_toc_style() -> ParagraphStyle:
+    styles = getSampleStyleSheet()
+    return ParagraphStyle(
+        "SmallTOC",
+        parent=styles["BodyText"],
+        fontSize=9,
+        leading=11,
+        leftIndent=18,
+        spaceAfter=4,
+    )
 
 
 def _draw_cover_footer(canvas) -> None:
@@ -315,9 +370,9 @@ def _draw_page_frame(canvas, doc, metadata: dict[str, str]) -> None:
 
     canvas.setFillColor(colors.HexColor("#4B4B4B"))
     canvas.setFont("Helvetica", 11)
-    canvas.drawRightString(A4[0] - 86, footer_y, "Page")
-    canvas.setFont("Helvetica", 20)
-    canvas.drawRightString(A4[0] - 40, footer_y - 2, str(doc.page))
+    canvas.drawRightString(A4[0] - 52, footer_y, "Page")
+    canvas.setFont("Helvetica", 15)
+    canvas.drawRightString(A4[0] - 40, footer_y, str(doc.page))
     canvas.restoreState()
 
 
@@ -350,3 +405,18 @@ def _draw_header_logo(canvas) -> None:
     canvas.setFillColor(colors.HexColor("#2F2F35"))
     canvas.setFont("Helvetica-Bold", 20)
     canvas.drawString(102, A4[1] - 34, "UrbanRoof")
+
+
+def _toc_line(title: str, page_no: str) -> str:
+    clean_title = _escape(title.upper())
+    dots = "." * max(10, 120 - len(title))
+    return f"{clean_title}{dots}{page_no}"
+
+
+def _image_index_caption(title: str, body: str) -> str:
+    observation = title
+    for line in body.splitlines():
+        if line.lower().startswith("observation:"):
+            observation = line.split(":", 1)[1].strip()
+            break
+    return observation.upper()
