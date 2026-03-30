@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import streamlit as st
 
 from extractor import extract_report_asset
@@ -10,6 +12,11 @@ st.set_page_config(page_title="AI DDR Generator", layout="wide")
 
 st.title("AI Workflow Assignment Guide")
 st.caption("Upload the inspection and thermal reports to generate a DDR draft.")
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+SAMPLE_INSPECTION = PROJECT_ROOT / "Sample Report.pdf"
+SAMPLE_THERMAL = PROJECT_ROOT / "Thermal Images.pdf"
+REFERENCE_DDR = PROJECT_ROOT / "Main DDR.pdf"
 
 with st.sidebar:
     st.header("How It Works")
@@ -23,17 +30,80 @@ inspection_file = st.file_uploader("Upload Inspection Report PDF", type=["pdf"])
 thermal_file = st.file_uploader("Upload Thermal Report PDF", type=["pdf"])
 
 
+def load_workspace_pdf(path: Path):
+    if path.exists():
+        return path.name, path.read_bytes()
+    return None, None
+
+
+def as_markdown_report(ddr) -> str:
+    lines = [
+        "# Detailed Diagnostic Report",
+        "",
+        "## Property Issue Summary",
+        ddr.property_issue_summary,
+        "",
+        "## Area-wise Observations",
+    ]
+    for section in ddr.area_wise_observations:
+        lines.extend(
+            [
+                f"### {section.title}",
+                section.body,
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Probable Root Cause",
+            ddr.probable_root_cause,
+            "",
+            "## Severity Assessment",
+            ddr.severity_assessment,
+            "",
+            "## Recommended Actions",
+        ]
+    )
+    lines.extend(f"- {action}" for action in ddr.recommended_actions)
+    lines.extend(["", "## Additional Notes"])
+    lines.extend(f"- {note}" for note in ddr.additional_notes)
+    lines.extend(["", "## Missing / Unclear Information"])
+    lines.extend(f"- {item}" for item in ddr.missing_or_unclear_information)
+    return "\n".join(lines)
+
+
 def render_section(title: str, body: str) -> None:
     st.subheader(title)
     st.markdown(body.replace("\n", "  \n"))
 
 
-if inspection_file and thermal_file:
+sample_mode = st.checkbox("Use bundled sample PDFs from the project folder", value=True)
+
+inspection_name = inspection_file.name if inspection_file else None
+inspection_bytes = inspection_file.read() if inspection_file else None
+thermal_name = thermal_file.name if thermal_file else None
+thermal_bytes = thermal_file.read() if thermal_file else None
+
+if sample_mode:
+    if not inspection_bytes:
+        inspection_name, inspection_bytes = load_workspace_pdf(SAMPLE_INSPECTION)
+    if not thermal_bytes:
+        thermal_name, thermal_bytes = load_workspace_pdf(SAMPLE_THERMAL)
+
+reference_name, reference_bytes = load_workspace_pdf(REFERENCE_DDR)
+
+if inspection_bytes and thermal_bytes:
     if st.button("Generate DDR Report", type="primary"):
         with st.spinner("Extracting report data and generating DDR..."):
-            inspection_asset = extract_report_asset(inspection_file.name, inspection_file.read())
-            thermal_asset = extract_report_asset(thermal_file.name, thermal_file.read())
-            ddr = build_ddr_report(inspection_asset, thermal_asset)
+            inspection_asset = extract_report_asset(inspection_name or "Inspection Report.pdf", inspection_bytes)
+            thermal_asset = extract_report_asset(thermal_name or "Thermal Report.pdf", thermal_bytes)
+            reference_asset = (
+                extract_report_asset(reference_name or "Main DDR.pdf", reference_bytes)
+                if reference_bytes
+                else None
+            )
+            ddr = build_ddr_report(inspection_asset, thermal_asset, reference_asset)
+            markdown_output = as_markdown_report(ddr)
 
         st.success("DDR report generated.")
 
@@ -72,5 +142,12 @@ if inspection_file and thermal_file:
         st.header("Missing / Unclear Information")
         for item in ddr.missing_or_unclear_information:
             st.write(f"- {item}")
+
+        st.download_button(
+            "Download DDR as Markdown",
+            data=markdown_output,
+            file_name="generated_ddr.md",
+            mime="text/markdown",
+        )
 else:
-    st.info("Add both PDFs to begin.")
+    st.info("Add both PDFs to begin, or keep sample mode enabled to use the bundled assignment files.")

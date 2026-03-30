@@ -34,11 +34,15 @@ THERMAL_KEYWORDS = [
 ]
 
 
-def build_ddr_report(inspection: ReportAsset, thermal: ReportAsset) -> DDRReport:
+def build_ddr_report(
+    inspection: ReportAsset,
+    thermal: ReportAsset,
+    reference_ddr: ReportAsset | None = None,
+) -> DDRReport:
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         try:
-            return _build_with_openai(api_key, inspection, thermal)
+            return _build_with_openai(api_key, inspection, thermal, reference_ddr)
         except Exception:
             pass
 
@@ -174,8 +178,14 @@ def _collect_missing_info(findings: Sequence[Finding], inspection: ReportAsset, 
     return list(dict.fromkeys(missing)) or ["No major missing information detected."]
 
 
-def _build_with_openai(api_key: str, inspection: ReportAsset, thermal: ReportAsset) -> DDRReport:
+def _build_with_openai(
+    api_key: str,
+    inspection: ReportAsset,
+    thermal: ReportAsset,
+    reference_ddr: ReportAsset | None = None,
+) -> DDRReport:
     client = OpenAI(api_key=api_key)
+    reference_text = reference_ddr.text[:12000] if reference_ddr else "No reference DDR provided."
     prompt = f"""
 You are generating a client-ready Detailed Diagnostic Report (DDR) from two source documents.
 
@@ -184,6 +194,9 @@ Inspection report text:
 
 Thermal report text:
 {thermal.text[:18000]}
+
+Reference DDR style and structure:
+{reference_text}
 
 Return valid JSON with this exact schema:
 {{
@@ -205,6 +218,7 @@ Instructions:
 - Merge duplicate findings from both documents.
 - Mention conflicts or unclear information explicitly.
 - Write concise professional language.
+- Follow the tone and sectioning style of the reference DDR when useful.
 - Do not invent measurements that are not present.
 """
     response = client.responses.create(

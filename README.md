@@ -11,6 +11,7 @@ This project generates a draft DDR (Detailed Diagnostic Report) from:
 - identifies issue-related observations
 - merges inspection and thermal evidence into area-wise findings
 - generates a DDR-style output in Streamlit
+- can use the bundled assignment sample PDFs directly from the project folder
 - optionally uses OpenAI when `OPENAI_API_KEY` is available
 
 ## Files
@@ -31,5 +32,5 @@ streamlit run app.py
 
 - The current version is designed as a solid first pass for the assignment.
 - If no API key is provided, the app still works with heuristic extraction and merge logic.
-- The next iteration should tune prompts and merge rules against the real sample PDFs:
-  `Sample Report.pdf`, `Thermal Images.pdf`, and `Main DDR.pdf`.
+- `Sample Report.pdf`, `Thermal Images.pdf`, `Main DDR.pdf`, and the assignment brief are already copied into the project folder.
+- When an API key is present, the app also uses `Main DDR.pdf` as a style reference for the generated report.
