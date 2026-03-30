@@ -56,9 +56,10 @@ def _build_with_heuristics(inspection: ReportAsset, thermal: ReportAsset) -> DDR
         findings = _fallback_findings(inspection.text, thermal.text)
 
     sections = _build_sections(findings, inspection, thermal)
-
     summary_points = [f"{finding.area}: {finding.issue}" for finding in findings[:5]]
-    property_issue_summary = "; ".join(summary_points) if summary_points else "No critical issues detected from the provided documents."
+    property_issue_summary = (
+        "; ".join(summary_points) if summary_points else "No critical issues detected from the provided documents."
+    )
 
     probable_root_cause = _combine_root_causes(findings)
     severity_assessment = _summarize_severity(findings)
@@ -68,6 +69,8 @@ def _build_with_heuristics(inspection: ReportAsset, thermal: ReportAsset) -> DDR
         "This draft was generated from the uploaded inspection and thermal reports.",
         "A final engineer review is recommended before client delivery.",
     ]
+    if any(finding.conflicts for finding in findings):
+        additional_notes.append("Some source observations require manual review because the probable ingress path is not fully confirmed.")
 
     return DDRReport(
         property_issue_summary=property_issue_summary,
@@ -98,17 +101,22 @@ def _parse_structured_findings(inspection_text: str, thermal_text: str) -> List[
         area = _infer_area_name(negative, positive, fallback=f"Area {index + 1}")
         thermal_summary = readings[index] if index < len(readings) else None
         evidence = [f"Inspection observation: {negative}"]
-        if positive:
-            evidence.append(f"Likely source side observation: {positive}")
-        if thermal_summary:
-            evidence.append(thermal_summary)
+        evidence.append(
+            f"Likely source side observation: {positive}" if positive else "Likely source side observation: Not Available"
+        )
+        evidence.append(thermal_summary if thermal_summary else "Thermal reading: Not Available")
 
         issue = negative.rstrip(".")
         root_cause = _infer_root_cause(negative, positive, thermal_summary)
         severity = _infer_severity(issue, positive, thermal_summary)
+        severity_reasoning = _severity_reasoning(issue, positive, thermal_summary)
+        conflicts = _detect_conflicts(issue, positive, thermal_summary)
+
         missing = []
+        if not positive:
+            missing.append("Positive side description: Not Available")
         if not thermal_summary:
-            missing.append("Mapped thermal reading for this area was not clearly identified.")
+            missing.append("Thermal reading: Not Available")
 
         findings.append(
             Finding(
@@ -117,7 +125,9 @@ def _parse_structured_findings(inspection_text: str, thermal_text: str) -> List[
                 evidence=evidence,
                 probable_root_cause=root_cause,
                 severity=severity,
+                severity_reasoning=severity_reasoning,
                 source_documents=["Inspection Report", "Thermal Report"],
+                conflicts=conflicts,
                 missing_information=missing,
             )
         )
@@ -158,7 +168,7 @@ def _compose_finding(area: str, sentences: Sequence[str]) -> Finding:
 
     missing = []
     if not any(char.isdigit() for sentence in sentences for char in sentence):
-        missing.append("Exact measurement or temperature reading not clearly identified.")
+        missing.append("Thermal reading: Not Available")
 
     return Finding(
         area=area,
@@ -166,7 +176,9 @@ def _compose_finding(area: str, sentences: Sequence[str]) -> Finding:
         evidence=list(dict.fromkeys(sentences))[:5],
         probable_root_cause=root_cause or "Requires expert validation based on site conditions.",
         severity=severity,
+        severity_reasoning=_severity_reasoning(issue, "", None),
         source_documents=["Inspection Report", "Thermal Report"],
+        conflicts=[],
         missing_information=missing,
     )
 
@@ -175,6 +187,7 @@ def _build_sections(findings: Sequence[Finding], inspection: ReportAsset, therma
     sections: List[DDRSection] = []
     thermal_images = [image for image in thermal.images if image.image_index == 0]
     inspection_images = [image for image in inspection.images if image.image_index == 0]
+    seen_titles: dict[str, int] = {}
 
     for index, finding in enumerate(findings, start=1):
         images = []
@@ -184,30 +197,42 @@ def _build_sections(findings: Sequence[Finding], inspection: ReportAsset, therma
             images.append(thermal_images[min(index - 1, len(thermal_images) - 1)])
 
         recommended_action = _action_for_finding(finding)
-        evidence_lines = "\n".join(f"- {line}" for line in finding.evidence) or "- Image Not Available"
+        evidence_lines = "\n".join(f"- {line}" for line in finding.evidence) or "- Not Available"
+        conflict_lines = "\n".join(f"- Conflict Detected: {line}" for line in finding.conflicts) or "- Not Available"
+        missing_lines = "\n".join(f"- {line}" for line in finding.missing_information) or "- Not Available"
         body = (
             f"Observation: {finding.issue}\n"
             f"Thermal / Visual Evidence:\n{evidence_lines}\n"
-            f"Probable Root Cause: {finding.probable_root_cause}\n"
+            f"Probable Root Cause: {finding.probable_root_cause or 'Not Available'}\n"
             f"Severity: {finding.severity}\n"
-            f"Recommended Action: {recommended_action}"
+            f"Severity Reasoning: {finding.severity_reasoning or 'Not Available'}\n"
+            f"Conflicts / Exceptions:\n{conflict_lines}\n"
+            f"Recommended Action: {recommended_action}\n"
+            f"Missing / Unclear Information:\n{missing_lines}"
         )
-        sections.append(DDRSection(title=finding.area, body=body, images=images))
+        title = finding.area
+        seen_titles[title] = seen_titles.get(title, 0) + 1
+        if seen_titles[title] > 1:
+            title = f"{title} {seen_titles[title]}"
+        sections.append(DDRSection(title=title, body=body, images=images))
 
     return sections
 
 
 def _combine_root_causes(findings: Sequence[Finding]) -> str:
     causes = list(dict.fromkeys(finding.probable_root_cause for finding in findings if finding.probable_root_cause))
-    return " ".join(causes[:3]) if causes else "No probable root cause identified."
+    return " ".join(causes[:3]) if causes else "Not Available"
 
 
 def _summarize_severity(findings: Sequence[Finding]) -> str:
     high_count = sum(1 for finding in findings if finding.severity == "High")
+    conflict_count = sum(1 for finding in findings if finding.conflicts)
     if high_count >= 2:
-        return "Overall severity is High because multiple areas suggest active seepage, leakage, or structural deterioration."
+        return "Overall severity is High because multiple areas suggest active seepage, leakage, or structural deterioration, and these findings should be prioritized."
     if high_count == 1:
         return "Overall severity is Medium to High because at least one area suggests active deterioration and should be prioritized."
+    if conflict_count:
+        return "Overall severity is Medium because the available observations indicate deterioration, but some findings require manual review due to conflicting source signals."
     return "Overall severity is Medium based on the available observations and should be verified during engineering review."
 
 
@@ -218,14 +243,14 @@ def _recommended_actions(findings: Sequence[Finding]) -> List[str]:
 
 
 def _collect_missing_info(findings: Sequence[Finding], inspection: ReportAsset, thermal: ReportAsset) -> List[str]:
-    missing = []
+    missing: List[str] = []
     for finding in findings:
         missing.extend(finding.missing_information)
     if not inspection.images:
-        missing.append("Inspection report images were not extracted.")
+        missing.append("Inspection report images: Not Available")
     if not thermal.images:
-        missing.append("Thermal report images were not extracted.")
-    return list(dict.fromkeys(missing)) or ["No major missing information detected."]
+        missing.append("Thermal report images: Not Available")
+    return list(dict.fromkeys(missing)) or ["Not Available"]
 
 
 def _build_with_openai(
@@ -269,12 +294,10 @@ Instructions:
 - Mention conflicts or unclear information explicitly.
 - Write concise professional language.
 - Follow the tone and sectioning style of the reference DDR when useful.
+- Use the exact wording "Not Available" for genuinely missing information.
 - Do not invent measurements that are not present.
 """
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=prompt,
-    )
+    response = client.responses.create(model="gpt-4.1-mini", input=prompt)
     raw_text = response.output_text
     payload = json.loads(raw_text)
     sections = [DDRSection(**section) for section in payload["area_wise_observations"]]
@@ -285,7 +308,7 @@ Instructions:
 def _parse_thermal_readings(thermal_text: str) -> List[str]:
     readings: List[str] = []
     pattern = re.compile(
-        r"Hotspot\s*:\s*(?P<hot>[0-9]+(?:\.[0-9]+)?)\s*°C.*?Coldspot\s*:\s*(?P<cold>[0-9]+(?:\.[0-9]+)?)\s*°C",
+        r"Hotspot\s*:\s*(?P<hot>[0-9]+(?:\.[0-9]+)?)\s*[°Â]*C.*?Coldspot\s*:\s*(?P<cold>[0-9]+(?:\.[0-9]+)?)\s*[°Â]*C",
         flags=re.IGNORECASE | re.DOTALL,
     )
     for index, match in enumerate(pattern.finditer(thermal_text), start=1):
@@ -302,21 +325,23 @@ def _clean_segment(value: str) -> str:
 
 
 def _infer_area_name(negative: str, positive: str, fallback: str) -> str:
-    area_candidates = [
-        "Master Bedroom",
-        "Common Bathroom",
-        "Parking Area",
-        "Bedroom",
-        "Kitchen",
-        "Hall",
-        "Bathroom",
-        "External Wall",
-        "Ceiling",
-    ]
+    negative_lower = negative.lower()
+    for needle, label in [
+        ("parking area", "Parking Area"),
+        ("master bedroom", "Master Bedroom"),
+        ("common bathroom", "Common Bathroom"),
+        ("bedroom", "Bedroom"),
+        ("kitchen", "Kitchen"),
+        ("hall", "Hall"),
+        ("bathroom", "Bathroom"),
+    ]:
+        if needle in negative_lower:
+            return label
+
     combined = f"{negative} {positive}".lower()
-    for candidate in area_candidates:
-        if candidate.lower() in combined:
-            return candidate
+    for needle, label in [("external wall", "External Wall"), ("ceiling", "Ceiling")]:
+        if needle in combined:
+            return label
     return fallback
 
 
@@ -332,7 +357,7 @@ def _infer_root_cause(negative: str, positive: str, thermal_summary: str | None)
         return "Upper-floor wet-area leakage or outlet seepage is likely affecting the ceiling zone."
     if thermal_summary:
         return "Thermal variation supports the presence of moisture accumulation behind the finished surface."
-    return "Requires expert validation based on the observed site conditions."
+    return "Not Available"
 
 
 def _infer_severity(issue: str, positive: str, thermal_summary: str | None) -> str:
@@ -342,6 +367,29 @@ def _infer_severity(issue: str, positive: str, thermal_summary: str | None) -> s
     if "dampness" in combined or "coldspot" in combined:
         return "Medium"
     return "Low"
+
+
+def _severity_reasoning(issue: str, positive: str, thermal_summary: str | None) -> str:
+    combined = f"{issue} {positive} {thermal_summary or ''}".lower()
+    if any(token in combined for token in ["seepage", "leak", "ceiling"]):
+        return "Severity is high because the observations suggest active water ingress affecting finishes or adjacent areas."
+    if "crack" in combined:
+        return "Severity is high because visible cracking can allow ongoing ingress and requires prompt treatment."
+    if "dampness" in combined and thermal_summary:
+        return "Severity is medium because visual dampness is supported by thermal variation, but the extent still requires site confirmation."
+    if "dampness" in combined:
+        return "Severity is medium because dampness is visible, though the exact source path is not fully confirmed."
+    return "Severity is assigned from the available evidence and should be verified during engineering review."
+
+
+def _detect_conflicts(issue: str, positive: str, thermal_summary: str | None) -> List[str]:
+    conflicts: List[str] = []
+    combined = f"{issue} {positive}".lower()
+    if "external wall" in combined and "bathroom" in combined:
+        conflicts.append("The source side mentions both bathroom and external wall conditions, so the dominant ingress path is not fully confirmed.")
+    if thermal_summary is None and any(token in combined for token in ["dampness", "seepage", "leak"]):
+        conflicts.append("A moisture-related visual observation is present, but a mapped thermal reading for this area is not available.")
+    return conflicts
 
 
 def _action_for_finding(finding: Finding) -> str:

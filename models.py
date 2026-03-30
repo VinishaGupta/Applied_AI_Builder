@@ -25,7 +25,9 @@ class Finding(BaseModel):
     evidence: List[str] = Field(default_factory=list)
     probable_root_cause: Optional[str] = None
     severity: str = "Medium"
+    severity_reasoning: Optional[str] = None
     source_documents: List[str] = Field(default_factory=list)
+    conflicts: List[str] = Field(default_factory=list)
     missing_information: List[str] = Field(default_factory=list)
 
 

@@ -8,7 +8,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Image, ListFlowable, ListItem, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Flowable, Image, ListFlowable, ListItem, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from models import DDRReport, ExtractedImage
 from models import ReportAsset
@@ -16,6 +16,8 @@ from models import ReportAsset
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 LOGO_PATH = PROJECT_ROOT / "logo.png"
+COVER_PAGE_PATH = PROJECT_ROOT / "A4 - 1.png"
+INTRO_PAGE_PATH = PROJECT_ROOT / "A4 - 2.png"
 
 
 def build_ddr_pdf(ddr: DDRReport, inspection: ReportAsset, thermal: ReportAsset) -> bytes:
@@ -68,8 +70,18 @@ def build_ddr_pdf(ddr: DDRReport, inspection: ReportAsset, thermal: ReportAsset)
     metadata = _extract_report_metadata(inspection.text)
 
     story = []
-    story.extend(_cover_page(metadata, title_style, body_style))
+    if COVER_PAGE_PATH.exists():
+        story.append(FullPageImage(str(COVER_PAGE_PATH)))
+    else:
+        story.extend(_cover_page(metadata, title_style, body_style))
     story.append(PageBreak())
+
+    if INTRO_PAGE_PATH.exists():
+        story.append(FullPageImage(str(INTRO_PAGE_PATH)))
+    else:
+        story.extend(_toc_page(ddr, section_style, body_style))
+    story.append(PageBreak())
+
     story.extend(_toc_page(ddr, section_style, body_style))
     story.append(PageBreak())
     story.extend(_images_index_page(ddr, section_style, body_style))
@@ -134,7 +146,11 @@ def build_ddr_pdf(ddr: DDRReport, inspection: ReportAsset, thermal: ReportAsset)
         )
     )
 
-    doc.build(story, onFirstPage=lambda c, d: _draw_cover_footer(c), onLaterPages=lambda c, d: _draw_page_frame(c, d, metadata))
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: None,
+        onLaterPages=lambda c, d: _draw_later_page(c, d, metadata),
+    )
     return buffer.getvalue()
 
 
@@ -420,3 +436,33 @@ def _image_index_caption(title: str, body: str) -> str:
             observation = line.split(":", 1)[1].strip()
             break
     return observation.upper()
+
+
+class FullPageImage(Flowable):
+    def __init__(self, image_path: str):
+        super().__init__()
+        self.image_path = image_path
+
+    def wrap(self, avail_width, avail_height):
+        return 0, 0
+
+    def draw(self):
+        return
+
+    def drawOn(self, canvas, x, y, _sW=0):
+        page_width, page_height = A4
+        canvas.drawImage(
+            self.image_path,
+            0,
+            0,
+            width=page_width,
+            height=page_height,
+            preserveAspectRatio=False,
+            mask="auto",
+        )
+
+
+def _draw_later_page(canvas, doc, metadata: dict[str, str]) -> None:
+    if doc.page <= 2:
+        return
+    _draw_page_frame(canvas, doc, metadata)
