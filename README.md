@@ -65,25 +65,4 @@ http://localhost:8501
 
 - 🚀 Streamlit App: `https://appliedaibuildergit-tyb7f8ctl4sfid2fim8wqo.streamlit.app/`
 
-## Notes
 
-- ✅ The app works without OpenAI using heuristic extraction and merge logic.
-- ✅ The final PDF includes custom front pages, branded footer, TOC, image index, and DDR sections.
-- ⚠️ Conflict detection is rule-based, not fully semantic.
-- ⚠️ Image-to-section matching is approximate and works best on reports similar to the provided samples.
-- ⚠️ `Prepared For` may appear as `Not Available` if the source PDFs do not actually contain a client name.
-
-## Submission Tips
-
-- 🎥 Record a 3-5 minute Loom showing:
-  what you built, how it works, limitations, and next improvements
-- 📁 Put your repo link, screenshots, demo output, and Loom link in one Google Drive folder
-- 🧪 Include at least one generated DDR PDF in the submission folder
-
-## Nice Next Improvements
-
-- Better conflict detection across inspection vs thermal evidence
-- More accurate image-to-observation matching
-- Stronger generalization across different report templates
-- Optional DOCX / JSON exports
-- Better audit trail for extracted evidence
